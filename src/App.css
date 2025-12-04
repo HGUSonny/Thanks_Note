@@ -184,7 +184,7 @@
   border-radius: 999px;
   border: 1px solid #e0c6af;
   padding: 0.3rem 0.7rem;
-  background: #fffdf9;
+  background: white;
   font-size: 0.8rem;
   cursor: pointer;
   margin-bottom: 0.3rem;
@@ -216,9 +216,9 @@
 
 .entry-item {
   border-radius: 0.75rem;
-  border: 1px solid #f0dcd0;
+  border: 1px solid whitesmoke;
   padding: 0.55rem 0.7rem;
-  background: #fffdfb;
+  background: whitesmoke;
   margin-bottom: 0.4rem;
 }
 
