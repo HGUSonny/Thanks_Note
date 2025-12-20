@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./DiaryListPage.css";
+import { getCurrentWeather } from "../weatherService";
 
 export default function DiaryListPage() {
   const navigate = useNavigate();
@@ -13,6 +14,10 @@ export default function DiaryListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [selectedMonth, setSelectedMonth] = useState("all");
+  const [selectedWeather, setSelectedWeather] = useState(null);
+  const [todayWeather, setTodayWeather] = useState(null);
+
   function logout() {
     localStorage.removeItem("authName");
     navigate("/index");
@@ -23,11 +28,11 @@ export default function DiaryListPage() {
       setLoading(true);
       setError("");
       const res = await fetch(API_URL);
-      if (!res.ok) throw new Error("목록을 불러오지 못했습니다.");
+      if (!res.ok) throw new Error();
       const data = await res.json();
       setAll(data || []);
-    } catch (e) {
-      setError(e.message || "목록을 불러오지 못했습니다.");
+    } catch {
+      setError("목록을 불러오지 못했습니다.");
       setAll([]);
     } finally {
       setLoading(false);
@@ -36,145 +41,224 @@ export default function DiaryListPage() {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line
+    getCurrentWeather().then(setTodayWeather);
   }, []);
 
   const mine = useMemo(() => {
     const arr = all.filter((d) => d.Name === userName);
-    arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    arr.sort((a, b) => new Date(getDateKey(b)) - new Date(getDateKey(a)));
     return arr;
   }, [all, userName]);
 
-  const startDate = useMemo(() => {
-    if (mine.length === 0) return "";
-    const oldest = [...mine].sort(
-      (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
-    )[0];
-    return new Date(oldest.createdAt).toLocaleDateString();
+  const monthOptions = useMemo(() => {
+    const set = new Set();
+    mine.forEach((it) => {
+      const d = getDateKey(it);
+      if (d) set.add(d.slice(0, 7));
+    });
+    return [...set].sort().reverse();
   }, [mine]);
+
+  const filteredMine = useMemo(() => {
+    let result = mine;
+
+    if (selectedMonth !== "all") {
+      result = result.filter((it) => getDateKey(it).startsWith(selectedMonth));
+    }
+
+    if (selectedWeather) {
+      result = result.filter(
+        (it) => getWeatherGroup(it.weather?.weatherCode) === selectedWeather
+      );
+    }
+
+    return result;
+  }, [mine, selectedMonth, selectedWeather]);
+
   function getDateKey(it) {
-    if (it?.date) return it.date; // ✅ 앞으로 저장할 필드
-    if (it?.createdAt) return String(it.createdAt).slice(0, 10); // "YYYY-MM-DD"
+    if (it?.date) return it.date;
+    if (it?.createdAt) return String(it.createdAt).slice(0, 10);
     if (it?.Time) {
       const s = String(it.Time);
-      const y = s.slice(0, 4);
-      const m = s.slice(4, 6);
-      const d = s.slice(6, 8);
-      if (y && m && d) return `${y}-${m}-${d}`;
+      return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
     }
     return "";
   }
 
   function formatKoDate(dateKey) {
-    if (!dateKey) return "";
     const d = new Date(dateKey);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleDateString("ko-KR");
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("ko-KR");
+  }
+
+  function getWeatherEmoji(code) {
+    if (code === 0) return "☀️";
+    if (code <= 3) return "☁️";
+    if (code <= 67) return "🌧️";
+    if (code <= 77) return "❄️";
+    if (code >= 95) return "⛈️";
+    return "🌡️";
+  }
+
+  function getWeatherText(code) {
+    if (code === 0) return "맑음";
+    if (code <= 3) return "흐림";
+    if (code <= 67) return "비";
+    if (code <= 77) return "눈";
+    if (code >= 95) return "폭풍";
+    return "날씨";
+  }
+
+  function getWeatherGroup(code) {
+    if (code === 0) return "sun";
+    if (code <= 3) return "cloud";
+    if (code <= 67) return "rain";
+    if (code <= 77) return "snow";
+    if (code >= 95) return "storm";
+    return null;
   }
 
   return (
     <div className="diaryPage">
       <div className="diaryWrap">
         <div className="diaryTop">
-          <div className="diaryLeft">
-            <div className="diaryBrand">GRATITUDE JOURNAL</div>
+          <div className="diaryHeaderRow">
+            <div className="diaryHeaderLeft">
+              <div className="diaryBrand">GRATITUDE JOURNAL</div>
 
-            <div className="diaryTitle">
-              <span className="diaryName">{userName}</span>
-              <span className="diarySuffix">님의 일기 목록</span>
-            </div>
+              <div className="diaryTitle">{userName}님의 일기 목록</div>
 
-            <div className="diaryDesc">
-              {userName}님의 감사 일기!
-              {startDate && (
-                <div className="diaryStart">일기 시작일: {startDate}</div>
+              {todayWeather && (
+                <div className="todayWeatherRow">
+                  <span className="todayWeatherEmoji">
+                    {getWeatherEmoji(todayWeather.weatherCode)}
+                  </span>
+                  <span>
+                    {getWeatherText(todayWeather.weatherCode)} ·{" "}
+                    {todayWeather.temperature.toFixed(1)}°C · 포항
+                  </span>
+                </div>
               )}
             </div>
 
-            <button className="diaryLogout" onClick={logout}>
-              로그아웃
-            </button>
+            <div className="diaryHeaderActions">
+              <div className="headerBtnRow">
+                <button
+                  className="headerBtn primary"
+                  onClick={() => navigate("/diary/write")}
+                >
+                  ✏️ 새 일기
+                </button>
+                <button className="headerBtn" onClick={loadData}>
+                  ↻ 새로고침
+                </button>
+                <button className="headerBtn ghost" onClick={logout}>
+                  로그아웃
+                </button>
+              </div>
+
+              <div className="weatherFilterRow">
+                {[
+                  { key: "sun", icon: "☀️" },
+                  { key: "rain", icon: "🌧️" },
+                  { key: "snow", icon: "❄️" },
+                  { key: "storm", icon: "⛈️" },
+                ].map((w) => (
+                  <button
+                    key={w.key}
+                    className={`weatherFilterBtn ${
+                      selectedWeather === w.key ? "active" : ""
+                    }`}
+                    onClick={() =>
+                      setSelectedWeather(
+                        selectedWeather === w.key ? null : w.key
+                      )
+                    }
+                  >
+                    {w.icon}
+                  </button>
+                ))}
+              </div>
+
+              {selectedWeather && (
+                <div className="activeWeatherNotice">
+                  현재 적용된 필터 :
+                  <strong>
+                    {selectedWeather === "sun" && " ☀️ 맑음"}
+                    {selectedWeather === "rain" && " 🌧️ 비"}
+                    {selectedWeather === "snow" && " ❄️ 눈"}
+                    {selectedWeather === "storm" && " ⛈️ 폭풍"}
+                  </strong>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="diaryMenuCard">
-            <div className="diaryMenuTitle">메뉴</div>
-
-            <button
-              className="diaryMenuBtn diaryMenuBtnPrimary"
-              onClick={() => navigate("/diary/write")}
+          <div className="diaryDescRow">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="monthSelect"
             >
-              ✏️ 새 일기
-            </button>
+              <option value="all">전체 일기</option>
+              {monthOptions.map((m) => {
+                const [y, mm] = m.split("-");
+                return (
+                  <option key={m} value={m}>
+                    {y}년 {parseInt(mm, 10)}월
+                  </option>
+                );
+              })}
+            </select>
 
-            <button
-              className="diaryMenuBtn diaryMenuBtnPrimary"
-              onClick={() => navigate("/diary")}
-            >
-              🏠 목록
-            </button>
-
-            <button
-              className="diaryMenuBtn diaryMenuBtnPrimary"
-              onClick={loadData}
-            >
-              ↻ 새로고침
-            </button>
+            <div className="diaryTodayDate">
+              {new Date().toLocaleDateString("ko-KR")}
+            </div>
           </div>
         </div>
 
-        <div className="diaryListBox">
+        <div
+          className={`diaryListBox ${
+            selectedWeather ? `list-${selectedWeather}` : ""
+          }`}
+        >
           <div className="diaryListHeader">
-            총 <span className="diaryCount">{mine.length}</span> 개
+            총 <span>{filteredMine.length}</span> 개
           </div>
 
-          {loading && <div className="diaryInfo">불러오는 중...</div>}
-
-          {!loading && error && <div className="diaryInfo">{error}</div>}
-
-          {!loading && !error && mine.length === 0 && (
-            <div className="diaryInfo">
-              <div className="diaryInfoTitle">안내</div>
-              아직 일기가 없습니다.
-            </div>
+          {loading && <div>불러오는 중...</div>}
+          {!loading && error && <div>{error}</div>}
+          {!loading && filteredMine.length === 0 && (
+            <div>선택한 조건에 해당하는 일기가 없습니다.</div>
           )}
 
-          {!loading && !error && mine.length > 0 && (
-            <div className="diaryPreviewList">
-              {mine.map((it) => {
-                const dateSource =
-                  it.createdAt ||
-                  (it.Time
-                    ? `${String(it.Time).slice(0, 4)}-${String(it.Time).slice(
-                        4,
-                        6
-                      )}-${String(it.Time).slice(6, 8)}`
-                    : "");
-
-                const dateText = dateSource
-                  ? new Date(dateSource).toLocaleDateString("ko-KR")
-                  : "";
-
-                const preview = (it.Content || "").slice(0, 90);
-
-                return (
-                  <div
-                    key={it.id}
-                    className="diaryPreviewItem"
-                    onClick={() => navigate(`/diary/${it.id}`)}
-                  >
-                    <div className="diaryPreviewDate">{dateText}</div>
-                    <div className="diaryPreviewTitle">
-                      {it.title || "(제목 없음)"}
-                    </div>
-                    <div className="diaryPreviewContent">
-                      {preview}
-                      {it.Content && it.Content.length > 90 ? "..." : ""}
-                    </div>
+          <div className="diaryPreviewList">
+            {filteredMine.map((it) => (
+              <div
+                key={it.id}
+                className="diaryPreviewItem"
+                onClick={() => navigate(`/diary/${it.id}`)}
+              >
+                <div className="diaryPreviewMain">
+                  <div className="diaryPreviewDate">
+                    {formatKoDate(getDateKey(it))}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="diaryPreviewTitle">
+                    {it.title || "(제목 없음)"}
+                  </div>
+                  <div className="diaryPreviewContent">
+                    {(it.Content || "").slice(0, 80)}
+                    {it.Content?.length > 80 ? "..." : ""}
+                  </div>
+                </div>
+
+                {it.weather && (
+                  <div className="diaryPreviewWeatherBig">
+                    {getWeatherEmoji(it.weather.weatherCode)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
