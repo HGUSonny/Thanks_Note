@@ -24,7 +24,6 @@ export default function App() {
         <Route path="/" element={<IndexPage />} />
         <Route path="/login" element={<LoginPage />} />
 
-        {/* ✅ 1번 화면(대시보드) 없애고 바로 목록으로 */}
         <Route path="/dashboard" element={<Navigate to="/diary" replace />} />
 
         <Route
